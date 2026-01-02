@@ -44,18 +44,41 @@ export const verifyOtp = async (phoneNumber, otpCode) => {
   return { valid: true };
 };
 
-// Send OTP via SMS (placeholder - integrate your SMS provider)
+// Send OTP via Fast2SMS (Quick SMS route - no verification needed)
 export const sendOtpSms = async (phoneNumber, otpCode) => {
-  // For development, just log the OTP
-  console.log(`[DEV] OTP for ${phoneNumber}: ${otpCode}`);
+  // Remove country code if present (Fast2SMS needs 10-digit number)
+  const cleanNumber = phoneNumber.replace(/^\+91/, "").replace(/^91/, "");
 
-  // Example Twilio integration:
-  // const twilio = require('twilio')(accountSid, authToken);
-  // await twilio.messages.create({
-  //   body: `Your Skilltube OTP is: ${otpCode}`,
-  //   from: '+1234567890',
-  //   to: phoneNumber
-  // });
+  // Log for development
+  console.log(`[OTP] Sending OTP ${otpCode} to ${cleanNumber}`);
 
-  return true;
+  // If no API key, just log (for local dev without SMS)
+  if (!process.env.FAST2SMS_API_KEY) {
+    console.log(`[DEV] No FAST2SMS_API_KEY set. OTP: ${otpCode}`);
+    return true;
+  }
+
+  try {
+    // Using Quick SMS route (no DLT/verification required)
+    const message = `Your SkillTube OTP is: ${otpCode}. Valid for 5 minutes.`;
+    const response = await fetch(
+      `https://www.fast2sms.com/dev/bulkV2?authorization=${process.env.FAST2SMS_API_KEY}&route=q&message=${encodeURIComponent(message)}&flash=0&numbers=${cleanNumber}`
+    );
+    const data = await response.json();
+
+    if (!data.return) {
+      console.error("Fast2SMS error:", data);
+      // Don't throw - allow dev mode fallback
+      console.log(`[DEV FALLBACK] Fast2SMS failed. OTP: ${otpCode}`);
+      return true;
+    }
+
+    console.log(`[OTP] SMS sent successfully to ${cleanNumber}`);
+    return true;
+  } catch (err) {
+    console.error("Fast2SMS error:", err);
+    // Don't throw - allow dev mode fallback
+    console.log(`[DEV FALLBACK] SMS failed. OTP: ${otpCode}`);
+    return true;
+  }
 };

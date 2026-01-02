@@ -138,3 +138,23 @@ export const getVideoStats = async (req, res) => {
     res.status(500).json({ error: "Failed to get stats" });
   }
 };
+
+// Get user's liked videos
+export const getLikedVideos = async (req, res) => {
+  try {
+    const userId = req.user.user_id;
+    const result = await pool.query(
+      `SELECT v.*, p.slug as playlist_slug, p.name as playlist_name
+       FROM video v
+       JOIN user_video_reaction r ON v.video_id = r.video_id
+       JOIN playlist p ON v.playlist_id = p.playlist_id
+       WHERE r.user_id = $1 AND r.reaction = 'like'
+       ORDER BY r.created_at DESC`,
+      [userId]
+    );
+    res.json(result.rows);
+  } catch (err) {
+    console.error("Get liked videos error:", err);
+    res.status(500).json({ error: "Failed to fetch liked videos" });
+  }
+};

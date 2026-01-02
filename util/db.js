@@ -36,6 +36,9 @@ export async function initDb(pool) {
     await pool.query(queries.createVideo);
     await pool.query(queries.createVideoIndexes);
     await pool.query(queries.createUserVideoReaction);
+    await pool.query(queries.createComment);
+    await pool.query(queries.createBookmark);
+
     console.log("Tables created or already exist!");
   } catch (err) {
     console.error(`Error occurred while creating tables: ${err}`);

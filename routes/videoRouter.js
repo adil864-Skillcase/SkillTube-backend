@@ -6,6 +6,10 @@ import {
   updateVideo,
   deleteVideo,
   incrementViewCount,
+  getLatestVideos,
+  searchVideos,
+  getVideosByCategory,
+  getAllVideos,
 } from "../controllers/videoController.js";
 import {
   authMiddleware,
@@ -14,6 +18,11 @@ import {
 
 const router = Router();
 
+// User routes
+router.get("/", getAllVideos);
+router.get("/latest", getLatestVideos);
+router.get("/search", searchVideos);
+router.get("/category/:categoryId", getVideosByCategory);
 router.get("/playlist/:playlistId", getVideosByPlaylist);
 router.get("/:id", getVideoById);
 router.post("/:id/view", incrementViewCount);

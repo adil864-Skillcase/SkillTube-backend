@@ -100,3 +100,62 @@ export const getMe = async (req, res) => {
     res.status(500).json({ error: "Failed to get user" });
   }
 };
+
+// No OTP (keep for testing/fallback)
+export const loginWithPhone = async (req, res) => {
+  try {
+    const { phoneNumber, name } = req.body;
+
+    if (!phoneNumber) {
+      return res.status(400).json({ error: "Phone number is required" });
+    }
+    // Check if user exists
+    let userResult = await pool.query(
+      "SELECT * FROM app_user WHERE phone_number = $1",
+      [phoneNumber]
+    );
+    let user;
+    if (userResult.rows.length === 0) {
+      // Create new user
+      const userId = uuidv4();
+      const newUser = await pool.query(
+        `INSERT INTO app_user (user_id, phone_number, name, role)
+         VALUES ($1, $2, $3, 'user')
+         RETURNING user_id, phone_number, name, role`,
+        [userId, phoneNumber, name || "User"]
+      );
+      user = newUser.rows[0];
+    } else {
+      user = userResult.rows[0];
+
+      // Update name if provided
+      if (name && name !== user.name) {
+        const updated = await pool.query(
+          "UPDATE app_user SET name = $1 WHERE user_id = $2 RETURNING *",
+          [name, user.user_id]
+        );
+        user = updated.rows[0];
+      }
+    }
+    // Generate JWT
+    const token = jwt.sign(
+      { userId: user.user_id, role: user.role },
+      jwtConfig.secret,
+      { expiresIn: jwtConfig.expiresIn }
+    );
+    res.json({
+      success: true,
+      token,
+      user: {
+        userId: user.user_id,
+        phoneNumber: user.phone_number,
+        name: user.name,
+        role: user.role,
+      },
+    });
+  } catch (err) {
+    console.error("Login error:", err);
+    res.status(500).json({ error: "Login failed" });
+  }
+};
+

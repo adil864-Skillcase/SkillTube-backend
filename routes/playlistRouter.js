@@ -6,6 +6,7 @@ import {
   createPlaylist,
   updatePlaylist,
   deletePlaylist,
+  getPlaylistsByCategory,
 } from "../controllers/playlistController.js";
 import {
   authMiddleware,
@@ -16,6 +17,7 @@ const router = Router();
 
 router.get("/", getAllPlaylists);
 router.get("/search", searchPlaylists);
+router.get("/category/:categoryId", getPlaylistsByCategory);
 router.get("/:slug", getPlaylistBySlug);
 
 // Admin routes

@@ -1,19 +1,34 @@
 import { pool } from "../util/db.js";
 
-// Get all playlists
+// Get all playlists with videos
 export const getAllPlaylists = async (req, res) => {
   try {
-    const result = await pool.query(`
-      SELECT 
-        p.*,
-        COUNT(v.video_id) as video_count
-      FROM playlist p
-      LEFT JOIN video v ON p.playlist_id = v.playlist_id AND v.is_active = TRUE
-      WHERE p.is_active = TRUE
-      GROUP BY p.playlist_id
-      ORDER BY p.display_order ASC, p.created_at DESC
+    // Get all playlists
+    const playlistsResult = await pool.query(`
+      SELECT * FROM playlist
+      WHERE is_active = TRUE
+      ORDER BY display_order ASC, created_at DESC
     `);
-    res.json(result.rows);
+
+    // Get videos for each playlist
+    const playlistsWithVideos = await Promise.all(
+      playlistsResult.rows.map(async (playlist) => {
+        const videosResult = await pool.query(
+          `SELECT * FROM video 
+           WHERE playlist_id = $1 AND is_active = TRUE 
+           ORDER BY display_order ASC, created_at DESC
+           LIMIT 10`,
+          [playlist.playlist_id]
+        );
+        return {
+          ...playlist,
+          videos: videosResult.rows,
+          video_count: videosResult.rows.length,
+        };
+      })
+    );
+
+    res.json(playlistsWithVideos);
   } catch (err) {
     console.error("Get playlists error:", err);
     res.status(500).json({ error: "Failed to fetch playlists" });
@@ -73,7 +88,7 @@ export const searchPlaylists = async (req, res) => {
 // Create playlist (admin)
 export const createPlaylist = async (req, res) => {
   try {
-    const { name, description, thumbnailUrl } = req.body;
+    const { name, description, thumbnailUrl, category } = req.body;
     if (!name) {
       return res.status(400).json({ error: "Playlist name is required" });
     }
@@ -83,10 +98,10 @@ export const createPlaylist = async (req, res) => {
       .replace(/[^a-z0-9]+/g, "-")
       .replace(/^-|-$/g, "");
     const result = await pool.query(
-      `INSERT INTO playlist (name, slug, description, thumbnail_url)
-       VALUES ($1, $2, $3, $4)
+      `INSERT INTO playlist (name, slug, description, thumbnail_url, category)
+       VALUES ($1, $2, $3, $4, $5)
        RETURNING *`,
-      [name, slug, description || null, thumbnailUrl || null]
+      [name, slug, description || null, thumbnailUrl || null, category || null]
     );
     res.status(201).json(result.rows[0]);
   } catch (err) {
@@ -102,19 +117,20 @@ export const createPlaylist = async (req, res) => {
 export const updatePlaylist = async (req, res) => {
   try {
     const { id } = req.params;
-    const { name, description, thumbnailUrl, displayOrder, isActive } =
+    const { name, description, thumbnailUrl, category, displayOrder, isActive } =
       req.body;
     const result = await pool.query(
       `UPDATE playlist 
        SET name = COALESCE($1, name),
            description = COALESCE($2, description),
            thumbnail_url = COALESCE($3, thumbnail_url),
-           display_order = COALESCE($4, display_order),
-           is_active = COALESCE($5, is_active),
+           category = COALESCE($4, category),
+           display_order = COALESCE($5, display_order),
+           is_active = COALESCE($6, is_active),
            updated_at = CURRENT_TIMESTAMP
-       WHERE playlist_id = $6
+       WHERE playlist_id = $7
        RETURNING *`,
-      [name, description, thumbnailUrl, displayOrder, isActive, id]
+      [name, description, thumbnailUrl, category, displayOrder, isActive, id]
     );
     if (result.rows.length === 0) {
       return res.status(404).json({ error: "Playlist not found" });
@@ -141,5 +157,27 @@ export const deletePlaylist = async (req, res) => {
   } catch (err) {
     console.error("Delete playlist error:", err);
     res.status(500).json({ error: "Failed to delete playlist" });
+  }
+};
+
+// Get playlists by category
+export const getPlaylistsByCategory = async (req, res) => {
+  try {
+    const { categoryId } = req.params;
+    const result = await pool.query(
+      `SELECT 
+        p.*,
+        COUNT(v.video_id) as video_count
+      FROM playlist p
+      LEFT JOIN video v ON p.playlist_id = v.playlist_id AND v.is_active = TRUE
+      WHERE p.is_active = TRUE AND p.category = $1
+      GROUP BY p.playlist_id
+      ORDER BY p.display_order ASC, p.created_at DESC`,
+      [categoryId]
+    );
+    res.json(result.rows);
+  } catch (err) {
+    console.error("Get playlists by category error:", err);
+    res.status(500).json({ error: "Failed to fetch playlists" });
   }
 };

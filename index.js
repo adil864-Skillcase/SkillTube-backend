@@ -12,6 +12,8 @@ import playlistRouter from "./routes/playlistRouter.js";
 import videoRouter from "./routes/videoRouter.js";
 import uploadRouter from "./routes/uploadRouter.js";
 import reactionRouter from "./routes/reactionRouter.js";
+import commentRouter from "./routes/commentRouter.js";
+import bookmarkRouter from "./routes/bookmarkRouter.js";
 
 // Middlewares
 import { authMiddleware, authorizeRole } from "./middlewares/authMiddleware.js";
@@ -64,6 +66,8 @@ app.use("/api/auth", authRouter);
 app.use("/api/playlists", playlistRouter);
 app.use("/api/videos", videoRouter);
 app.use("/api/reactions", reactionRouter);
+app.use("/api/comments", commentRouter);
+app.use("/api/bookmarks", bookmarkRouter);
 
 // Admin Routes
 app.use("/api/upload", authMiddleware, authorizeRole("admin"), uploadRouter);
