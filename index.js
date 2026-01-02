@@ -28,6 +28,7 @@ const allowedOrigins = process.env.ALLOWED_ORIGINS?.split(",") || [
   "http://localhost:5173",
   "capacitor://localhost",
   "https://localhost",
+  "https://skilltube-frontend.vercel.app",
 ];
 
 app.use(
