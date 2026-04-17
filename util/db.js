@@ -30,14 +30,57 @@ pool
 
 export async function initDb(pool) {
   try {
-    await pool.query(queries.createAppUser);
-    await pool.query(queries.createOtpVerification);
-    await pool.query(queries.createPlaylist);
-    await pool.query(queries.createVideo);
-    await pool.query(queries.createVideoIndexes);
-    await pool.query(queries.createUserVideoReaction);
-    await pool.query(queries.createComment);
-    await pool.query(queries.createBookmark);
+    for (const query of queries.baseSchemaQueries) {
+      await pool.query(query);
+    }
+
+    for (const query of queries.featureSchemaQueries) {
+      await pool.query(query);
+    }
+
+    for (const query of queries.alterSchemaQueries) {
+      try {
+        await pool.query(query);
+      } catch (err) {
+        if (err.code !== "42701" && err.code !== "42710") {
+          throw err;
+        }
+      }
+    }
+
+    await pool.query(`
+      DO $$
+      BEGIN
+        IF NOT EXISTS (
+          SELECT 1 FROM pg_constraint WHERE conname = 'playlist_category_fk'
+        ) THEN
+          ALTER TABLE playlist
+            ADD CONSTRAINT playlist_category_fk
+            FOREIGN KEY (category_id) REFERENCES category(category_id) ON DELETE SET NULL;
+        END IF;
+      END $$;
+    `);
+
+    await pool.query(`
+      DO $$
+      BEGIN
+        IF NOT EXISTS (
+          SELECT 1 FROM pg_constraint WHERE conname = 'video_category_fk'
+        ) THEN
+          ALTER TABLE video
+            ADD CONSTRAINT video_category_fk
+            FOREIGN KEY (category_id) REFERENCES category(category_id) ON DELETE SET NULL;
+        END IF;
+      END $$;
+    `);
+
+    for (const query of queries.seedSchemaQueries) {
+      await pool.query(query);
+    }
+
+    for (const query of queries.indexSchemaQueries) {
+      await pool.query(query);
+    }
 
     console.log("Tables created or already exist!");
   } catch (err) {

@@ -1,5 +1,5 @@
 import { pool } from "../util/db.js";
-import { deleteFromBunny } from "../services/bunnyService.js";
+import { getCloudFrontUrl } from "../services/assetUrlService.js";
 
 // Get videos by playlist
 export const getVideosByPlaylist = async (req, res) => {
@@ -43,30 +43,48 @@ export const createVideo = async (req, res) => {
       title,
       description,
       videoUrl,
+      storageKey,
+      hlsManifestPath,
       thumbnailUrl,
+      thumbnailKey,
       category,
+      categoryId,
       duration,
       displayOrder,
+      processingStatus,
+      sourceType,
     } = req.body;
-    if (!playlistId || !title || !videoUrl) {
+    if (!playlistId || !title || (!videoUrl && !hlsManifestPath && !storageKey)) {
       return res.status(400).json({
-        error: "Playlist ID, title, and video URL are required",
+        error: "Playlist ID, title and one media source are required",
       });
     }
+
+    const resolvedVideoUrl =
+      videoUrl ||
+      (hlsManifestPath ? getCloudFrontUrl(hlsManifestPath) : null) ||
+      (storageKey ? getCloudFrontUrl(storageKey) : null);
+
     const result = await pool.query(
       `INSERT INTO video 
-       (playlist_id, title, description, video_url, thumbnail_url, category, duration, display_order)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+       (playlist_id, title, description, video_url, storage_key, hls_manifest_path, thumbnail_url, thumbnail_key, category, category_id, duration, display_order, processing_status, source_type)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
        RETURNING *`,
       [
         playlistId,
         title,
         description || null,
-        videoUrl,
+        resolvedVideoUrl,
+        storageKey || null,
+        hlsManifestPath || null,
         thumbnailUrl || null,
+        thumbnailKey || null,
         category || null,
+        categoryId || null,
         duration || 0,
         displayOrder || 0,
+        processingStatus || "processing",
+        sourceType || "hls",
       ]
     );
     res.status(201).json(result.rows[0]);
@@ -80,20 +98,56 @@ export const createVideo = async (req, res) => {
 export const updateVideo = async (req, res) => {
   try {
     const { id } = req.params;
-    const { title, description, thumbnailUrl, category, displayOrder, isActive } =
-      req.body;
+    const {
+      title,
+      description,
+      thumbnailUrl,
+      thumbnailKey,
+      category,
+      categoryId,
+      displayOrder,
+      isActive,
+      processingStatus,
+      videoUrl,
+      hlsManifestPath,
+      playlistId,
+    } = req.body;
+
+    const resolvedVideoUrl =
+      videoUrl || (hlsManifestPath ? getCloudFrontUrl(hlsManifestPath) : null);
+
     const result = await pool.query(
       `UPDATE video 
        SET title = COALESCE($1, title),
            description = COALESCE($2, description),
            thumbnail_url = COALESCE($3, thumbnail_url),
-           category = COALESCE($4, category),
-           display_order = COALESCE($5, display_order),
-           is_active = COALESCE($6, is_active),
+           thumbnail_key = COALESCE($4, thumbnail_key),
+           category = COALESCE($5, category),
+           category_id = COALESCE($6, category_id),
+           display_order = COALESCE($7, display_order),
+           is_active = COALESCE($8, is_active),
+           processing_status = COALESCE($9, processing_status),
+           hls_manifest_path = COALESCE($10, hls_manifest_path),
+           video_url = COALESCE($11, video_url),
+           playlist_id = COALESCE($12, playlist_id),
            updated_at = CURRENT_TIMESTAMP
-       WHERE video_id = $7
+       WHERE video_id = $13
        RETURNING *`,
-      [title, description, thumbnailUrl, category, displayOrder, isActive, id]
+      [
+        title,
+        description,
+        thumbnailUrl,
+        thumbnailKey,
+        category,
+        categoryId,
+        displayOrder,
+        isActive,
+        processingStatus,
+        hlsManifestPath,
+        resolvedVideoUrl,
+        playlistId,
+        id,
+      ]
     );
     if (result.rows.length === 0) {
       return res.status(404).json({ error: "Video not found" });
@@ -110,24 +164,12 @@ export const deleteVideo = async (req, res) => {
   try {
     const { id } = req.params;
 
-    // Get video URL before delete
-    const video = await pool.query(
-      "SELECT video_url FROM video WHERE video_id = $1",
+    const result = await pool.query(
+      "DELETE FROM video WHERE video_id = $1 RETURNING video_id",
       [id]
     );
-
-    if (video.rows.length === 0) {
+    if (!result.rows.length) {
       return res.status(404).json({ error: "Video not found" });
-    }
-
-    // Delete from database
-    await pool.query("DELETE FROM video WHERE video_id = $1", [id]);
-
-    // Delete from Bunny CDN (optional, fire-and-forget)
-    const videoUrl = video.rows[0].video_url;
-    if (videoUrl) {
-      const filename = videoUrl.split("/").pop();
-      deleteFromBunny(filename).catch(console.error);
     }
 
     res.json({ success: true, message: "Video deleted" });
@@ -207,7 +249,13 @@ export const getVideosByCategory = async (req, res) => {
       `SELECT v.*, p.name as playlist_name, p.slug as playlist_slug 
        FROM video v 
        JOIN playlist p ON v.playlist_id = p.playlist_id 
-       WHERE v.is_active = TRUE AND v.category = $1
+       LEFT JOIN category c ON c.category_id = v.category_id
+       WHERE v.is_active = TRUE
+         AND (
+           c.slug = $1
+           OR v.category = $1
+           OR CAST(v.category_id AS TEXT) = $1
+         )
        ORDER BY v.view_count DESC, v.created_at DESC 
        LIMIT $2`,
       [categoryId, limit]

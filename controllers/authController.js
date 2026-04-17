@@ -8,6 +8,22 @@ import {
   verifyOtp,
   sendOtpSms,
 } from "../services/otpService.js";
+import { PERMISSION_KEYS } from "../constants/permissions.js";
+
+const getPermissionsForUser = async (user) => {
+  if (!user) return [];
+  if (user.role === "super_admin") {
+    return [...PERMISSION_KEYS];
+  }
+  if (user.role !== "admin") {
+    return [];
+  }
+  const permissionsResult = await pool.query(
+    `SELECT permission_key FROM admin_permission WHERE admin_user_id = $1`,
+    [user.user_id]
+  );
+  return permissionsResult.rows.map((row) => row.permission_key);
+};
 
 // Send OTP
 export const sendOtp = async (req, res) => {
@@ -70,6 +86,7 @@ export const verifyOtpAndLogin = async (req, res) => {
       jwtConfig.secret,
       { expiresIn: jwtConfig.expiresIn }
     );
+    const permissions = await getPermissionsForUser(user);
     res.json({
       success: true,
       token,
@@ -78,6 +95,7 @@ export const verifyOtpAndLogin = async (req, res) => {
         phoneNumber: user.phone_number,
         name: user.name,
         role: user.role,
+        permissions,
       },
     });
   } catch (err) {
@@ -94,6 +112,7 @@ export const getMe = async (req, res) => {
       phoneNumber: req.user.phone_number,
       name: req.user.name,
       role: req.user.role,
+      permissions: await getPermissionsForUser(req.user),
     });
   } catch (err) {
     console.error("Get me error:", err);
@@ -143,6 +162,7 @@ export const loginWithPhone = async (req, res) => {
       jwtConfig.secret,
       { expiresIn: jwtConfig.expiresIn }
     );
+    const permissions = await getPermissionsForUser(user);
     res.json({
       success: true,
       token,
@@ -151,6 +171,7 @@ export const loginWithPhone = async (req, res) => {
         phoneNumber: user.phone_number,
         name: user.name,
         role: user.role,
+        permissions,
       },
     });
   } catch (err) {
@@ -159,3 +180,52 @@ export const loginWithPhone = async (req, res) => {
   }
 };
 
+// Search Users (Admin only)
+export const searchUsers = async (req, res) => {
+  try {
+    if (req.user.role !== "admin" && req.user.role !== "super_admin") {
+      return res.status(403).json({ error: "Unauthorized" });
+    }
+    const query = req.query.q || "";
+    const result = await pool.query(
+      `SELECT user_id, phone_number, name, role, created_at 
+       FROM app_user 
+       WHERE name ILIKE $1 OR phone_number ILIKE $1 
+       ORDER BY created_at DESC 
+       LIMIT 15`,
+      [`%${query}%`]
+    );
+    res.json(result.rows);
+  } catch (err) {
+    console.error("Search users error:", err);
+    res.status(500).json({ error: "Failed to search users" });
+  }
+};
+
+// Make User Admin (Admin only)
+export const makeUserAdmin = async (req, res) => {
+  try {
+    if (req.user.role !== "admin" && req.user.role !== "super_admin") {
+      return res.status(403).json({ error: "Unauthorized" });
+    }
+    const { targetUserId } = req.body;
+    if (!targetUserId) {
+      return res.status(400).json({ error: "Target user ID is required" });
+    }
+    
+    // Specifically updating role to admin
+    const result = await pool.query(
+      `UPDATE app_user SET role = 'admin' WHERE user_id = $1 RETURNING user_id, name, phone_number, role`,
+      [targetUserId]
+    );
+    
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: "User not found" });
+    }
+    
+    res.json({ success: true, user: result.rows[0] });
+  } catch (err) {
+    console.error("Make user admin error:", err);
+    res.status(500).json({ error: "Failed to update user role" });
+  }
+};

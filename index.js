@@ -14,9 +14,14 @@ import uploadRouter from "./routes/uploadRouter.js";
 import reactionRouter from "./routes/reactionRouter.js";
 import commentRouter from "./routes/commentRouter.js";
 import bookmarkRouter from "./routes/bookmarkRouter.js";
+import categoryRouter from "./routes/categoryRouter.js";
+import featuredRouter from "./routes/featuredRouter.js";
+import adminPermissionRouter from "./routes/adminPermissionRouter.js";
+import dashboardRouter from "./routes/dashboardRouter.js";
 
 // Middlewares
-import { authMiddleware, authorizeRole } from "./middlewares/authMiddleware.js";
+import { authMiddleware } from "./middlewares/authMiddleware.js";
+import { attachPermissions } from "./middlewares/permissionMiddleware.js";
 
 // Jobs
 import { initOtpCleanupJob } from "./jobs/otpCleanupJob.js";
@@ -69,9 +74,18 @@ app.use("/api/videos", videoRouter);
 app.use("/api/reactions", reactionRouter);
 app.use("/api/comments", commentRouter);
 app.use("/api/bookmarks", bookmarkRouter);
+app.use("/api/categories", categoryRouter);
+app.use("/api/featured", featuredRouter);
+app.use("/api/admin/permissions", adminPermissionRouter);
+app.use("/api/dashboard", dashboardRouter);
 
 // Admin Routes
-app.use("/api/upload", authMiddleware, authorizeRole("admin"), uploadRouter);
+app.use(
+  "/api/upload",
+  authMiddleware,
+  attachPermissions,
+  uploadRouter
+);
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {

@@ -1,95 +1,103 @@
-import multer from "multer";
-import path from "path";
-import fs from "fs";
-import { v4 as uuidv4 } from "uuid";
-import { uploadToBunny } from "../services/bunnyService.js";
-import { uploadThumbnail } from "../services/cloudinaryService.js";
+import {
+  buildThumbnailObjectKey,
+  buildVideoObjectKey,
+  checkObjectExists,
+  createPutObjectContract,
+} from "../services/s3Service.js";
+import {
+  buildHlsManifestPath,
+  createTranscodeJob,
+} from "../services/mediaConvertService.js";
+import { getCloudFrontUrl } from "../services/assetUrlService.js";
 
-// Configure multer for temp storage
-const storage = multer.diskStorage({
-  destination: (req, file, cb) => {
-    const uploadDir = "./tmp/uploads";
-    if (!fs.existsSync(uploadDir)) {
-      fs.mkdirSync(uploadDir, { recursive: true });
-    }
-    cb(null, uploadDir);
-  },
-  filename: (req, file, cb) => {
-    const uniqueName = `${uuidv4()}${path.extname(file.originalname)}`;
-    cb(null, uniqueName);
-  },
-});
+const MAX_UPLOAD_SIZE = 500 * 1024 * 1024;
 
-export const upload = multer({
-  storage,
-  limits: { fileSize: 500 * 1024 * 1024 }, // 500MB limit
-  fileFilter: (req, file, cb) => {
-    if (file.fieldname === "video") {
-      const videoTypes = /mp4|mov|avi|mkv|webm/;
-      const extname = videoTypes.test(
-        path.extname(file.originalname).toLowerCase()
-      );
-      if (extname) {
-        cb(null, true);
-      } else {
-        cb(new Error("Only video files are allowed"));
-      }
-    } else if (file.fieldname === "thumbnail") {
-      const imageTypes = /jpeg|jpg|png|webp/;
-      const extname = imageTypes.test(
-        path.extname(file.originalname).toLowerCase()
-      );
-      if (extname) {
-        cb(null, true);
-      } else {
-        cb(new Error("Only image files are allowed"));
-      }
-    } else {
-      cb(null, true);
-    }
-  },
-});
-
-// Upload video to Bunny CDN
-export const uploadVideo = async (req, res) => {
+export const initVideoUpload = async (req, res) => {
   try {
-    if (!req.file) {
-      return res.status(400).json({ error: "No video file provided" });
+    const { fileName, contentType, fileSize } = req.body;
+
+    if (!fileName || !contentType) {
+      return res.status(400).json({ error: "fileName and contentType are required" });
     }
-    const result = await uploadToBunny(req.file.path, req.file.filename);
-    // Clean up temp file
-    fs.unlinkSync(req.file.path);
-    if (!result.success) {
-      return res.status(500).json({ error: result.error });
+
+    if (fileSize && Number(fileSize) > MAX_UPLOAD_SIZE) {
+      return res.status(400).json({ error: "Video exceeds 500MB limit" });
     }
+
+    const objectKey = buildVideoObjectKey(fileName);
+    const contract = await createPutObjectContract({
+      key: objectKey,
+      contentType,
+    });
+
     res.json({
       success: true,
-      videoUrl: result.url,
+      ...contract,
+      objectKey,
     });
   } catch (err) {
-    console.error("Upload video error:", err);
-    res.status(500).json({ error: "Failed to upload video" });
+    console.error("Init video upload error:", err);
+    res
+      .status(err.statusCode || 500)
+      .json({ error: err.message || "Failed to initialize upload" });
   }
 };
 
-// Upload thumbnail to Cloudinary
-export const uploadThumbnailController = async (req, res) => {
+export const completeVideoUpload = async (req, res) => {
   try {
-    if (!req.file) {
-      return res.status(400).json({ error: "No thumbnail file provided" });
+    const { objectKey } = req.body;
+    if (!objectKey) {
+      return res.status(400).json({ error: "objectKey is required" });
     }
-    const result = await uploadThumbnail(req.file.path);
-    // Clean up temp file
-    fs.unlinkSync(req.file.path);
-    if (!result.success) {
-      return res.status(500).json({ error: result.error });
+
+    const exists = await checkObjectExists(objectKey);
+    if (!exists) {
+      return res.status(400).json({ error: "Uploaded file not found in storage" });
     }
+
+    const hlsManifestPath = buildHlsManifestPath(objectKey);
+    const transcodeResult = await createTranscodeJob({ sourceKey: objectKey });
+
     res.json({
       success: true,
-      thumbnailUrl: result.url,
+      objectKey,
+      hlsManifestPath,
+      jobId: transcodeResult.jobId || null,
+      processingStatus: transcodeResult.queued ? "processing" : "uploaded",
+      videoUrl: getCloudFrontUrl(objectKey),
     });
   } catch (err) {
-    console.error("Upload thumbnail error:", err);
-    res.status(500).json({ error: "Failed to upload thumbnail" });
+    console.error("Complete video upload error:", err);
+    res
+      .status(err.statusCode || 500)
+      .json({ error: err.message || "Failed to complete upload" });
+  }
+};
+
+export const initThumbnailUpload = async (req, res) => {
+  try {
+    const { fileName, contentType } = req.body;
+
+    if (!fileName || !contentType) {
+      return res.status(400).json({ error: "fileName and contentType are required" });
+    }
+
+    const objectKey = buildThumbnailObjectKey(fileName);
+    const contract = await createPutObjectContract({
+      key: objectKey,
+      contentType,
+    });
+
+    res.json({
+      success: true,
+      ...contract,
+      objectKey,
+      thumbnailUrl: getCloudFrontUrl(objectKey),
+    });
+  } catch (err) {
+    console.error("Init thumbnail upload error:", err);
+    res
+      .status(err.statusCode || 500)
+      .json({ error: err.message || "Failed to initialize thumbnail upload" });
   }
 };

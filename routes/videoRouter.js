@@ -13,8 +13,9 @@ import {
 } from "../controllers/videoController.js";
 import {
   authMiddleware,
-  authorizeRole,
 } from "../middlewares/authMiddleware.js";
+import { attachPermissions, requirePermission } from "../middlewares/permissionMiddleware.js";
+import { PERMISSIONS } from "../constants/permissions.js";
 
 const router = Router();
 
@@ -28,8 +29,26 @@ router.get("/:id", getVideoById);
 router.post("/:id/view", incrementViewCount);
 
 // Admin routes
-router.post("/", authMiddleware, authorizeRole("admin"), createVideo);
-router.put("/:id", authMiddleware, authorizeRole("admin"), updateVideo);
-router.delete("/:id", authMiddleware, authorizeRole("admin"), deleteVideo);
+router.post(
+  "/",
+  authMiddleware,
+  attachPermissions,
+  requirePermission(PERMISSIONS.VIDEO_CREATE),
+  createVideo
+);
+router.put(
+  "/:id",
+  authMiddleware,
+  attachPermissions,
+  requirePermission(PERMISSIONS.VIDEO_EDIT),
+  updateVideo
+);
+router.delete(
+  "/:id",
+  authMiddleware,
+  attachPermissions,
+  requirePermission(PERMISSIONS.VIDEO_DELETE),
+  deleteVideo
+);
 
 export default router;

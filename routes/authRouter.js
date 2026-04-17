@@ -4,6 +4,8 @@ import {
   verifyOtpAndLogin,
   getMe,
   loginWithPhone,
+  searchUsers,
+  makeUserAdmin
 } from "../controllers/authController.js";
 import { authMiddleware } from "../middlewares/authMiddleware.js";
 
@@ -18,6 +20,10 @@ router.post("/login", loginWithPhone);
 
 // Protected route
 router.get("/me", authMiddleware, getMe);
+
+// Admin routes
+router.get("/users/search", authMiddleware, searchUsers);
+router.post("/users/make-admin", authMiddleware, makeUserAdmin);
 
 export default router;
 
