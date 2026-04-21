@@ -1,13 +1,22 @@
 import { pool } from "../util/db.js";
+import axios from "axios";
+
+const FAST2SMS_URL = "https://www.fast2sms.com/dev/bulkV2";
+const ROUTE = "dlt";
+const SENDER_ID = "SKLCSE";
+const TEMPLATE_ID = "210004";
 
 // Generate 6-digit OTP
 export const generateOtp = () => {
-  return Math.floor(100000 + Math.random() * 900000).toString();
+  let otp = "";
+  for (let i = 0; i < 6; i++) {
+    otp += Math.floor(Math.random() * 10);
+  }
+  return otp;
 };
 
 // Save OTP to database
 export const saveOtp = async (phoneNumber, otpCode) => {
-  const expiresAt = new Date(Date.now() + 5 * 60 * 1000); // 5 minutes
   // Delete existing OTPs for this phone
   await pool.query("DELETE FROM otp_verification WHERE phone_number = $1", [
     phoneNumber,
@@ -16,8 +25,8 @@ export const saveOtp = async (phoneNumber, otpCode) => {
   // Insert new OTP
   await pool.query(
     `INSERT INTO otp_verification (phone_number, otp_code, expires_at)
-     VALUES ($1, $2, $3)`,
-    [phoneNumber, otpCode, expiresAt]
+     VALUES ($1, $2, NOW() + INTERVAL '5 minutes')`,
+    [phoneNumber, otpCode]
   );
   return otpCode;
 };
@@ -44,41 +53,47 @@ export const verifyOtp = async (phoneNumber, otpCode) => {
   return { valid: true };
 };
 
-// Send OTP via Fast2SMS (Quick SMS route - no verification needed)
-export const sendOtpSms = async (phoneNumber, otpCode) => {
-  // Remove country code if present (Fast2SMS needs 10-digit number)
-  const cleanNumber = phoneNumber.replace(/^\+91/, "").replace(/^91/, "");
-
-  // Log for development
-  console.log(`[OTP] Sending OTP ${otpCode} to ${cleanNumber}`);
-
-  // If no API key, just log (for local dev without SMS)
-  if (!process.env.FAST2SMS_API_KEY) {
-    console.log(`[DEV] No FAST2SMS_API_KEY set. OTP: ${otpCode}`);
-    return true;
-  }
-
+// Send OTP via Fast2SMS (DLT Route Template)
+export const sendOtpSms = async (phone, otp) => {
   try {
-    // Using Quick SMS route (no DLT/verification required)
-    const message = `Your SkillTube OTP is: ${otpCode}. Valid for 5 minutes.`;
-    const response = await fetch(
-      `https://www.fast2sms.com/dev/bulkV2?authorization=${process.env.FAST2SMS_API_KEY}&route=q&message=${encodeURIComponent(message)}&flash=0&numbers=${cleanNumber}`
-    );
-    const data = await response.json();
+    // Normalize phone - remove country code if present
+    const normalizedPhone = phone.replace(/\D/g, "").slice(-10);
+    
+    console.log(`[OTP] Sending OTP ${otp} to ${normalizedPhone} via DLT template`);
 
-    if (!data.return) {
-      console.error("Fast2SMS error:", data);
-      // Don't throw - allow dev mode fallback
-      console.log(`[DEV FALLBACK] Fast2SMS failed. OTP: ${otpCode}`);
+    // If no API key, just log (for local dev without SMS)
+    if (!process.env.FAST2SMS_API_KEY) {
+      console.log(`[DEV] No FAST2SMS_API_KEY set. OTP: ${otp}`);
       return true;
     }
 
-    console.log(`[OTP] SMS sent successfully to ${cleanNumber}`);
+    const params = new URLSearchParams({
+      authorization: process.env.FAST2SMS_API_KEY,
+      route: ROUTE,
+      sender_id: SENDER_ID,
+      message: TEMPLATE_ID,
+      variables_values: otp,
+      flash: "0",
+      numbers: normalizedPhone,
+      schedule_time: "",
+    });
+
+    const response = await axios.get(`${FAST2SMS_URL}?${params.toString()}`, {
+      headers: { "cache-control": "no-cache" },
+      timeout: 30000,
+    });
+
+    if (!response.data || (!response.data.return && response.data.status_code !== 200)) {
+      console.error("Fast2SMS error:", response.data);
+      console.log(`[DEV FALLBACK] Fast2SMS failed. OTP: ${otp}`);
+      return true; // Don't block dev
+    }
+
+    console.log(`[OTP] SMS sent successfully to ${normalizedPhone}`);
     return true;
-  } catch (err) {
-    console.error("Fast2SMS error:", err);
-    // Don't throw - allow dev mode fallback
-    console.log(`[DEV FALLBACK] SMS failed. OTP: ${otpCode}`);
-    return true;
+  } catch (error) {
+    console.error("Fast2SMS Error:", error.message);
+    console.log(`[DEV FALLBACK] SMS failed. OTP: ${otp}`);
+    return true; // Don't throw - allow dev mode fallback
   }
 };

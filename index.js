@@ -18,6 +18,7 @@ import categoryRouter from "./routes/categoryRouter.js";
 import featuredRouter from "./routes/featuredRouter.js";
 import adminPermissionRouter from "./routes/adminPermissionRouter.js";
 import dashboardRouter from "./routes/dashboardRouter.js";
+import notificationRouter from "./routes/notificationRouter.js";
 
 // Middlewares
 import { authMiddleware } from "./middlewares/authMiddleware.js";
@@ -56,7 +57,7 @@ initOtpCleanupJob();
 
 // Health Check
 app.get("/", (req, res) => {
-  res.send("Skilltube Backend running!");
+  res.send("SkillSnap Backend running!");
 });
 
 app.get("/health", (req, res) => {
@@ -78,6 +79,7 @@ app.use("/api/categories", categoryRouter);
 app.use("/api/featured", featuredRouter);
 app.use("/api/admin/permissions", adminPermissionRouter);
 app.use("/api/dashboard", dashboardRouter);
+app.use("/api/notifications", notificationRouter);
 
 // Admin Routes
 app.use(

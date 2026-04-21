@@ -6,6 +6,7 @@ export const PERMISSIONS = {
   CATEGORY_MANAGE: "category.manage",
   FEATURED_MANAGE: "featured.manage",
   ADMIN_MANAGE_PERMISSIONS: "admin.manage_permissions",
+  NOTIFICATION_MANAGE: "notification.manage",
 };
 
 export const PERMISSION_KEYS = Object.values(PERMISSIONS);

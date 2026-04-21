@@ -32,11 +32,20 @@ export const sendOtp = async (req, res) => {
     if (!phoneNumber) {
       return res.status(400).json({ error: "Phone number is required" });
     }
+
+    // Check if user already exists
+    const userResult = await pool.query(
+      "SELECT user_id FROM app_user WHERE phone_number = $1",
+      [phoneNumber]
+    );
+    const isNewUser = userResult.rows.length === 0;
+
     const otpCode = generateOtp();
     await saveOtp(phoneNumber, otpCode);
     await sendOtpSms(phoneNumber, otpCode);
     res.json({
       success: true,
+      isNewUser, // Crucial for Frontend UI step logic
       message: "OTP sent successfully",
       // Remove in production
       devOtp: process.env.NODE_ENV === "development" ? otpCode : undefined,

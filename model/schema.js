@@ -154,6 +154,8 @@ export const alterSchemaQueries = [
   `ALTER TABLE video ADD COLUMN IF NOT EXISTS category_id INT;`,
   `ALTER TABLE video ADD COLUMN IF NOT EXISTS source_type VARCHAR(20) DEFAULT 'hls';`,
   `ALTER TABLE video ADD COLUMN IF NOT EXISTS processing_status VARCHAR(30) DEFAULT 'pending';`,
+  `ALTER TABLE app_user ADD COLUMN IF NOT EXISTS fcm_token TEXT;`,
+  `ALTER TABLE app_user ADD COLUMN IF NOT EXISTS fcm_token_updated_at TIMESTAMP;`,
 ];
 
 export const seedSchemaQueries = [

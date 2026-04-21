@@ -11,11 +11,11 @@ import { authMiddleware } from "../middlewares/authMiddleware.js";
 
 const router = Router();
 
-// OTP routes (uncomment for production)
-// router.post("/send-otp", sendOtp);
-// router.post("/verify-otp", verifyOtpAndLogin);
+// OTP routes
+router.post("/send-otp", sendOtp);
+router.post("/verify-otp", verifyOtpAndLogin);
 
-// Simple login (no OTP - for testing)
+// Simple login (no OTP - for testing backward compatibility)
 router.post("/login", loginWithPhone);
 
 // Protected route

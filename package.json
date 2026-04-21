@@ -5,9 +5,9 @@
   "main": "index.js",
   "type": "module",
   "scripts": {
-    "start":"node index.js",
-    "build":"npm install",
-    "dev":"nodemon index.js"
+    "start": "node index.js",
+    "build": "npm install",
+    "dev": "nodemon index.js"
   },
   "author": "",
   "license": "ISC",
@@ -21,6 +21,7 @@
     "cors": "^2.8.5",
     "dotenv": "^17.2.3",
     "express": "^5.2.1",
+    "firebase-admin": "^10.3.0",
     "jsonwebtoken": "^9.0.3",
     "node-cron": "^4.2.1",
     "pg": "^8.16.3",
